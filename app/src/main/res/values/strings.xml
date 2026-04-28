@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">蓝牙键盘</string>
+    
+    <!-- 主界面文字 -->
+    <string name="title_main">蓝牙键盘</string>
+    <string name="hint_input">在这里输入文字...</string>
+    <string name="btn_pair_bluetooth">配对蓝牙设备</string>
+    <string name="btn_disconnect">断开连接</string>
+    <string name="btn_settings">设置</string>
+    <string name="label_connected_device">已连接设备：</string>
+    <string name="label_no_device_connected">未连接设备</string>
+    <string name="scanning_devices">正在扫描设备...</string>
+    <string name="no_devices_found">未发现设备</string>
+    <string name="select_device_to_connect">选择设备连接</string>
+    <string name="connecting_to_device">正在连接到：%s</string>
+    <string name="connected_to_device">已连接到：%s</string>
+    <string name="disconnected_from_device">已断开连接：%s</string>
+    <string name="connection_failed">连接失败</string>
+    
+    <!-- 设置界面文字 -->
+    <string name="title_settings">设置</string>
+    <string name="setting_replace_enter">将换行键替换为发送键</string>
+    <string name="setting_replace_enter_desc">开启后，键盘回车键将触发发送事件，而不是在输入框中换行</string>
+    <string name="setting_custom_background">自定义背景</string>
+    <string name="setting_select_background">选择背景图片</string>
+    <string name="setting_reset_background">重置为默认背景</string>
+    <string name="setting_background_desc">上传本地图片作为应用背景</string>
+    
+    <!-- 权限请求文字 -->
+    <string name="permission_bluetooth_title">需要蓝牙权限</string>
+    <string name="permission_bluetooth_message">应用需要蓝牙权限来搜索和连接设备</string>
+    <string name="permission_location_title">需要位置权限</string>
+    <string name="permission_location_message">Android 6.0+ 需要位置权限来扫描蓝牙设备</string>
+    <string name="permission_storage_title">需要存储权限</string>
+    <string name="permission_storage_message">需要存储权限来选择自定义背景图片</string>
+    <string name="btn_grant_permission">授予权限</string>
+    <string name="btn_cancel">取消</string>
+    
+    <!-- 错误信息 -->
+    <string name="error_bluetooth_not_supported">设备不支持蓝牙</string>
+    <string name="error_bluetooth_disabled">蓝牙未开启</string>
+    <string name="error_hid_not_supported">设备不支持蓝牙HID（需要Android 9.0+）</string>
+    <string name="error_connect_failed">连接失败，请重试</string>
+    <string name="error_send_failed">发送失败</string>
+    
+    <!-- 成功信息 -->
+    <string name="success_connected">连接成功</string>
+    <string name="success_disconnected">断开连接成功</string>
+    <string name="success_background_updated">背景已更新</string>
+    <string name="success_background_reset">背景已重置</string>
+    
+    <!-- 按钮文字 -->
+    <string name="btn_retry">重试</string>
+    <string name="btn_back">返回</string>
+    <string name="btn_save">保存</string>
+    <string name="btn_ok">确定</string>
+    <string name="btn_select">选择</string>
+    
+    <!-- 提示文字 -->
+    <string name="tip_connect_first">请先连接蓝牙设备</string>
+    <string name="tip_typing">输入内容将实时发送到已连接的设备</string>
+    <string name="tip_enter_send">回车键将发送内容</string>
+    <string name="tip_enter_newline">回车键将换行</string>
+    
+    <!-- Toast 消息 -->
+    <string name="toast_text_sent">文本已发送</string>
+    <string name="toast_enter_sent">发送键已按下</string>
+    <string name="toast_backspace_sent">退格键已按下</string>
+</resources>

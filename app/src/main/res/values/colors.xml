@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 渐变背景颜色 -->
+    <color name="purple_200">#FFBB86FC</color>
+    <color name="purple_500">#FF6200EE</color>
+    <color name="purple_700">#FF3700B3</color>
+    <color name="teal_200">#FF03DAC5</color>
+    <color name="teal_700">#FF018786</color>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+    <color name="transparent">#00FFFFFF</color>
+    
+    <!-- 应用主色调 -->
+    <color name="primary">#7C4DFF</color>
+    <color name="primary_variant">#651FFF</color>
+    <color name="secondary">#03DAC6</color>
+    <color name="secondary_variant">#018786</color>
+    
+    <!-- 背景渐变颜色 -->
+    <color name="gradient_start">#2D1B69</color>
+    <color name="gradient_end">#1A237E</color>
+    
+    <!-- 毛玻璃效果颜色 -->
+    <color name="glass_background">#80FFFFFF</color>
+    <color name="glass_border">#40FFFFFF</color>
+    
+    <!-- 文字颜色 -->
+    <color name="text_primary">#FFFFFF</color>
+    <color name="text_secondary">#B3B3B3</color>
+    <color name="text_hint">#808080</color>
+    
+    <!-- 按钮颜色 -->
+    <color name="button_normal">#7C4DFF</color>
+    <color name="button_pressed">#651FFF</color>
+    <color name="button_disabled">#555555</color>
+    
+    <!-- 状态颜色 -->
+    <color name="connected">#4CAF50</color>
+    <color name="disconnected">#F44336</color>
+    <color name="connecting">#FFC107</color>
+</resources>

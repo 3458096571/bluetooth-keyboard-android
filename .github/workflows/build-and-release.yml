@@ -1,0 +1,114 @@
+name: Build and Release APK
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:  # 允许手动触发
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up JDK 11
+      uses: actions/setup-java@v3
+      with:
+        java-version: '11'
+        distribution: 'temurin'
+    
+    - name: Cache Gradle dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.gradle/caches
+          ~/.gradle/wrapper
+        key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+        restore-keys: |
+          ${{ runner.os }}-gradle-
+    
+    - name: Grant execute permission for gradlew
+      run: chmod +x gradlew
+    
+    - name: Build APK
+      run: ./gradlew assembleDebug
+    
+    - name: Upload APK artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: bluetooth-keyboard-apk
+        path: app/build/outputs/apk/debug/*.apk
+    
+    - name: Generate QR Code for APK
+      run: |
+        APK_PATH=$(find app/build/outputs/apk/debug -name "*.apk" -type f | head -1)
+        if [ -f "$APK_PATH" ]; then
+          APK_SIZE=$(du -h "$APK_PATH" | cut -f1)
+          echo "APK generated: $APK_PATH ($APK_SIZE)"
+          echo "APK_SIZE=$APK_SIZE" >> $GITHUB_ENV
+          echo "APK_PATH=$APK_PATH" >> $GITHUB_ENV
+        else
+          echo "APK not found"
+          exit 1
+        fi
+    
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Download APK artifact
+      uses: actions/download-artifact@v3
+      with:
+        name: bluetooth-keyboard-apk
+    
+    - name: Create Release
+      id: create_release
+      uses: softprops/action-gh-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: v1.0.${{ github.run_number }}
+        name: Bluetooth Keyboard v1.0.${{ github.run_number }}
+        body: |
+          # 蓝牙键盘应用 APK 下载
+          
+          ## 应用信息
+          - **版本**: 1.0.${{ github.run_number }}
+          - **构建时间**: ${{ github.run_id }}
+          - **最低 Android 版本**: 9.0 (API 28)
+          
+          ## 功能特性
+          - 手机变蓝牙键盘
+          - 实时文字传输
+          - 发送键自定义
+          - 毛玻璃界面效果
+          - 自定义背景图片
+          
+          ## 安装说明
+          1. 下载下方的 APK 文件
+          2. 在 Android 设备上安装
+          3. 授予蓝牙和位置权限
+          4. 连接你的电脑或平板
+          
+          ## 注意
+          - 需要 Android 9.0+ 真实设备
+          - 接收端无需安装任何软件
+          - 支持蓝牙 HID 协议
+          
+          🚀 **立即下载体验吧！**
+        draft: false
+        prerelease: false
+        files: |
+          *.apk
+    
+    - name: Output Release Info
+      run: |
+        echo "Release created: ${{ steps.create_release.outputs.html_url }}"
+        echo "Download URL: ${{ steps.create_release.outputs.upload_url }}"
