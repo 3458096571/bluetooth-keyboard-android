@@ -4,14 +4,12 @@ package com.example.bluetoothkeyboard
  * HID 相关常量定义
  */
 object Constants {
-    
+
     // HID 报告 ID
     const val ID_KEYBOARD: Byte = 1
-    
-    // 键盘报告描述符 (8字节)
-    // Byte 0: 修饰键 (Ctrl, Shift, Alt, GUI)
-    // Byte 1: 保留
-    // Byte 2-7: 按键码 (最多6个同时按键)
+
+    // 键盘报告描述符
+    // 标准 USB HID 键盘描述符
     val SDP_RECORD = byteArrayOf(
         0x05, 0x01.toByte(), // Usage Page (Generic Desktop)
         0x09, 0x06,          // Usage (Keyboard)
@@ -23,10 +21,10 @@ object Constants {
         0x25, 0x01,          //   Logical Maximum (1)
         0x75, 0x01,          //   Report Size (1)
         0x95, 0x08,          //   Report Count (8)
-        0x81, 0x02,          //   Input (Data, Variable, Absolute)
+        0x81.toByte(), 0x02, //   Input (Data, Variable, Absolute)
         0x95, 0x01,          //   Report Count (1)
         0x75, 0x08,          //   Report Size (8)
-        0x81, 0x01,          //   Input (Constant)
+        0x81.toByte(), 0x01, //   Input (Constant)
         0x95, 0x05,          //   Report Count (5)
         0x75, 0x01,          //   Report Size (1)
         0x05, 0x08,          //   Usage Page (Page# for LEDs)
@@ -43,10 +41,10 @@ object Constants {
         0x05, 0x07,          //   Usage Page (Key Codes)
         0x19, 0x00,          //   Usage Minimum (0)
         0x29, 0x65,          //   Usage Maximum (101)
-        0x81, 0x00,          //   Input (Data, Array)
+        0x81.toByte(), 0x00, //   Input (Data, Array)
         0xC0.toByte()        // End Collection
     )
-    
+
     // QoS 参数
     val QOS_OUT = byteArrayOf(
         0x00, 0x00, 0x00, 0x00,
