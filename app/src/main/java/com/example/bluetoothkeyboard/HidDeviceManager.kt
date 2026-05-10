@@ -142,7 +142,8 @@ class HidDeviceManager private constructor() : KeyboardDataSender {
     private fun registerApp() {
         hidDevice?.registerApp(
             sdpSettings,
-            qosSettings,
+            qosSettings,   // 入站 QoS
+            qosSettings,   // 出站 QoS
             Executor { it.run() },
             hidCallback
         )
