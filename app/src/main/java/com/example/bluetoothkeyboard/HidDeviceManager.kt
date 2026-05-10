@@ -2,8 +2,6 @@ package com.example.bluetoothkeyboard
 
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothHidDevice
-import android.bluetooth.BluetoothHidDeviceAppSdpSettings
-import android.bluetooth.BluetoothHidDeviceAppQosSettings
 import android.bluetooth.BluetoothProfile
 import android.content.Context
 import android.os.Handler
@@ -14,6 +12,7 @@ import com.example.bluetoothkeyboard.KeyboardReport.KeyboardDataSender
 /**
  * HID 设备管理器
  * 负责注册 HID 服务、管理连接状态和发送数据
+ * 基于 Android 9.0+ BluetoothHidDevice API
  */
 class HidDeviceManager private constructor() : KeyboardDataSender {
 
@@ -42,38 +41,6 @@ class HidDeviceManager private constructor() : KeyboardDataSender {
     private val mainHandler = Handler(Looper.getMainLooper())
     private val callbacks = mutableListOf<HidDeviceCallback>()
     private val keyboardReport = KeyboardReport()
-
-    // SDP 设置：描述 HID 设备信息
-    private val sdpSettings = BluetoothHidDeviceAppSdpSettings(
-        "Bluetooth Keyboard",       // 名称
-        "Android",                   // 描述
-        "Google",                    // 提供商
-        BluetoothHidDevice.SUBCLASS1_KEYBOARD, // 子类：键盘
-        null,                        // 描述符由 registerApp 的第三个参数传入
-        -1                           // 无特定版本
-    )
-
-    // 入站 QoS 设置
-    private val qosIn = BluetoothHidDeviceAppQosSettings(
-        BluetoothHidDeviceAppQosSettings.SERVICE_TYPE_BEST_EFFORT,
-        0,      // token rate
-        0,      // token bucket size
-        0,      // peak bandwidth
-        0,      // latency
-        0,      // delay variation
-        BluetoothHidDeviceAppQosSettings.MAX
-    )
-
-    // 出站 QoS 设置
-    private val qosOut = BluetoothHidDeviceAppQosSettings(
-        BluetoothHidDeviceAppQosSettings.SERVICE_TYPE_BEST_EFFORT,
-        0,      // token rate
-        0,      // token bucket size
-        0,      // peak bandwidth
-        0,      // latency
-        0,      // delay variation
-        BluetoothHidDeviceAppQosSettings.MAX
-    )
 
     /**
      * HID 设备回调
@@ -170,16 +137,44 @@ class HidDeviceManager private constructor() : KeyboardDataSender {
 
     /**
      * 注册 HID 应用
+     * 使用与原始项目一致的 API 调用方式
      */
+    @Suppress("DEPRECATION")
     private fun registerApp() {
-        hidDevice?.registerApp(
-            sdpSettings,       // SDP 设置
-            Constants.SDP_RECORD, // HID 描述符
-            qosIn,             // 入站 QoS
-            qosOut,            // 出站 QoS
-            Runnable::run,     // Executor
-            hidCallback        // 回调
-        )
+        try {
+            hidDevice?.registerApp(
+                Constants.SDP_RECORD,  // HID 描述符 (byte[])
+                null,                 // SDP 设置 (null 表示使用描述符中的信息)
+                Constants.QOS_OUT,    // 入站 QoS (byte[])
+                Runnable::run,        // Executor
+                hidCallback           // 回调
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to register HID app with 5-arg API, trying 6-arg API", e)
+            try {
+                // API 33+ 可能需要不同的参数
+                val method = BluetoothHidDevice::class.java.getMethod(
+                    "registerApp",
+                    ByteArray::class.java,
+                    Any::class.java,  // BluetoothHidDeviceAppSdpSettings or null
+                    ByteArray::class.java,
+                    ByteArray::class.java,
+                    java.util.concurrent.Executor::class.java,
+                    BluetoothHidDevice.Callback::class.java
+                )
+                method.invoke(
+                    hidDevice,
+                    Constants.SDP_RECORD,
+                    null,
+                    Constants.QOS_OUT,
+                    Constants.QOS_OUT,
+                    Runnable::run,
+                    hidCallback
+                )
+            } catch (e2: Exception) {
+                Log.e(TAG, "Failed to register HID app with 6-arg API", e2)
+            }
+        }
     }
 
     /**
@@ -240,7 +235,7 @@ class HidDeviceManager private constructor() : KeyboardDataSender {
         if (device != null && hid != null) {
             val report = keyboardReport.setValue(modifier, key1, key2, key3, key4, key5, key6)
             try {
-                hid.sendReport(device, Constants.ID_KEYBOARD.toInt(), report)
+                hid.sendReport(device, Constants.ID_KEYBOARD, report)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to send report", e)
             }
