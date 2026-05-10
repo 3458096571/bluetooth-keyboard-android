@@ -1,12 +1,22 @@
 package com.example.bluetoothkeyboard
 
+import android.util.Log
 import com.example.bluetoothkeyboard.KeyboardReport.KeyboardDataSender
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
 /**
  * 键盘辅助类
  * 负责字符到扫描码的转换和按键发送
  */
 class KeyboardHelper(private val dataSender: KeyboardDataSender) {
+
+    companion object {
+        private const val TAG = "KeyboardHelper"
+        // 每个按键之间的延迟（毫秒），确保接收端能正确处理
+        private const val KEY_DELAY_MS = 20L
+    }
 
     /**
      * 修饰键常量
@@ -42,18 +52,6 @@ class KeyboardHelper(private val dataSender: KeyboardDataSender) {
         const val LEFT = 80
         const val DOWN = 81
         const val UP = 82
-        const val F1 = 58
-        const val F2 = 59
-        const val F3 = 60
-        const val F4 = 61
-        const val F5 = 62
-        const val F6 = 63
-        const val F7 = 64
-        const val F8 = 65
-        const val F9 = 66
-        const val F10 = 67
-        const val F11 = 68
-        const val F12 = 69
     }
 
     // 字符到扫描码的映射表 (小写字母和数字)
@@ -91,113 +89,68 @@ class KeyboardHelper(private val dataSender: KeyboardDataSender) {
         '<' to 0x36, '>' to 0x37, '?' to 0x38
     )
 
-    // 特殊键名称到扫描码的映射
-    private val specialKeyMap = mapOf(
-        "Enter" to Key.ENTER,
-        "Escape" to Key.ESCAPE,
-        "Backspace" to Key.BACKSPACE,
-        "Tab" to Key.TAB,
-        "Space" to Key.SPACE,
-        "Delete" to Key.DELETE,
-        "Insert" to Key.INSERT,
-        "Home" to Key.HOME,
-        "End" to Key.END,
-        "PageUp" to Key.PAGEUP,
-        "PageDown" to Key.PAGEDOWN,
-        "Right" to Key.RIGHT,
-        "Left" to Key.LEFT,
-        "Down" to Key.DOWN,
-        "Up" to Key.UP
-    )
-
     /**
-     * 发送单个字符
+     * 发送单个字符（同步版本）
      * 自动处理大小写和Shift键
      */
     fun sendChar(char: Char) {
-        val code = keyMap[char]
+        var shift = false
+        var code = keyMap[char]
+        
+        if (code == null) {
+            // 在 shiftKeyMap 中查找
+            shift = true
+            code = shiftKeyMap[char]
+        }
+        
         if (code != null) {
-            // 小写字符，直接发送
-            sendKeyPress(Modifier.NONE, code)
+            // 发送按键按下
+            val modifier = if (shift) Modifier.LEFT_SHIFT else Modifier.NONE
+            dataSender.sendKeyboard(modifier, code, 0, 0, 0, 0, 0)
+            // 发送按键释放
+            dataSender.sendKeyboard(Modifier.NONE, 0, 0, 0, 0, 0, 0)
+            Log.d(TAG, "sendChar: '$char' -> code=$code, shift=$shift")
         } else {
-            // 尝试大写/符号映射
-            val shiftCode = shiftKeyMap[char]
-            if (shiftCode != null) {
-                sendKeyPress(Modifier.LEFT_SHIFT, shiftCode)
-            }
+            Log.w(TAG, "sendChar: unknown char '$char'")
         }
     }
 
     /**
-     * 发送字符串
-     * 逐个字符发送
+     * 发送字符串（挂起函数，带延迟）
+     * 在 IO 线程中执行，每个字符之间有延迟
      */
-    fun sendString(text: String) {
+    suspend fun sendString(text: String) = withContext(Dispatchers.IO) {
+        Log.d(TAG, "sendString: \"$text\" (${text.length} chars)")
         for (char in text) {
             sendChar(char)
+            delay(KEY_DELAY_MS)
         }
-    }
-
-    /**
-     * 发送特殊键
-     */
-    fun sendSpecialKey(keyName: String) {
-        val code = specialKeyMap[keyName]
-        if (code != null) {
-            sendKeyPress(Modifier.NONE, code)
-        }
+        Log.d(TAG, "sendString: done")
     }
 
     /**
      * 发送回车键
      */
     fun sendEnter() {
-        sendKeyPress(Modifier.NONE, Key.ENTER)
+        Log.d(TAG, "sendEnter")
+        dataSender.sendKeyboard(Modifier.NONE, Key.ENTER, 0, 0, 0, 0, 0)
+        dataSender.sendKeyboard(Modifier.NONE, 0, 0, 0, 0, 0, 0)
     }
 
     /**
      * 发送退格键
      */
     fun sendBackspace() {
-        sendKeyPress(Modifier.NONE, Key.BACKSPACE)
-    }
-
-    /**
-     * 发送带修饰键的组合键
-     */
-    fun sendCombo(modifier: Int, keyCode: Int) {
-        sendKeyPress(modifier, keyCode)
+        Log.d(TAG, "sendBackspace")
+        dataSender.sendKeyboard(Modifier.NONE, Key.BACKSPACE, 0, 0, 0, 0, 0)
+        dataSender.sendKeyboard(Modifier.NONE, 0, 0, 0, 0, 0, 0)
     }
 
     /**
      * 发送按键按下和释放事件
      */
-    private fun sendKeyPress(modifier: Int, keyCode: Int) {
-        // 按下
+    fun sendKeyPress(modifier: Int, keyCode: Int) {
         dataSender.sendKeyboard(modifier, keyCode, 0, 0, 0, 0, 0)
-        // 释放
-        dataSender.sendKeyboard(Modifier.NONE, 0, 0, 0, 0, 0, 0)
-    }
-
-    /**
-     * 发送原始键盘数据
-     */
-    fun sendKeysDown(
-        modifier: Int,
-        key1: Int = 0,
-        key2: Int = 0,
-        key3: Int = 0,
-        key4: Int = 0,
-        key5: Int = 0,
-        key6: Int = 0
-    ) {
-        dataSender.sendKeyboard(modifier, key1, key2, key3, key4, key5, key6)
-    }
-
-    /**
-     * 发送所有按键释放
-     */
-    fun sendKeysUp() {
         dataSender.sendKeyboard(Modifier.NONE, 0, 0, 0, 0, 0, 0)
     }
 }

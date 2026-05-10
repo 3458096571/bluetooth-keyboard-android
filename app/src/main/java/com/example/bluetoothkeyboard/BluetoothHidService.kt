@@ -12,7 +12,6 @@ import android.content.pm.ServiceInfo
 import android.os.Binder
 import android.os.Build
 import android.os.IBinder
-import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
 
@@ -28,13 +27,11 @@ class BluetoothHidService : Service() {
         private const val NOTIFICATION_ID = 1
         const val ACTION_START = "action_start"
         const val ACTION_STOP = "action_stop"
-        private const val WAKE_LOCK_TAG = "BluetoothKeyboard::WakeLock"
     }
 
     private val binder = LocalBinder()
     private var hidDeviceManager: HidDeviceManager? = null
     private var serviceCallback: HidDeviceManager.HidDeviceCallback? = null
-    private var wakeLock: PowerManager.WakeLock? = null
 
     inner class LocalBinder : Binder() {
         fun getService(): BluetoothHidService = this@BluetoothHidService
@@ -45,7 +42,6 @@ class BluetoothHidService : Service() {
         Log.d(TAG, "Service created")
         createNotificationChannel()
         hidDeviceManager = HidDeviceManager.getInstance()
-        acquireWakeLock()
     }
 
     override fun onBind(intent: Intent): IBinder {
@@ -60,37 +56,6 @@ class BluetoothHidService : Service() {
         return START_STICKY
     }
 
-    /**
-     * 获取 WakeLock 保持 CPU 运行
-     */
-    private fun acquireWakeLock() {
-        val powerManager = getSystemService(POWER_SERVICE) as PowerManager
-        wakeLock = powerManager.newWakeLock(
-            PowerManager.PARTIAL_WAKE_LOCK,
-            WAKE_LOCK_TAG
-        ).apply {
-            setReferenceCounted(false)
-            acquire(10 * 60 * 1000L) // 10分钟，会自动续期
-        }
-        Log.d(TAG, "WakeLock acquired")
-    }
-
-    /**
-     * 释放 WakeLock
-     */
-    private fun releaseWakeLock() {
-        wakeLock?.let {
-            if (it.isHeld) {
-                it.release()
-                Log.d(TAG, "WakeLock released")
-            }
-        }
-        wakeLock = null
-    }
-
-    /**
-     * 启动前台服务
-     */
     private fun startForegroundService() {
         val notification = createNotification("蓝牙键盘服务运行中", "正在保持蓝牙连接...")
         
@@ -107,63 +72,39 @@ class BluetoothHidService : Service() {
         Log.d(TAG, "Foreground service started")
     }
 
-    /**
-     * 停止前台服务
-     */
     private fun stopForegroundService() {
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
         Log.d(TAG, "Foreground service stopped")
     }
 
-    /**
-     * 初始化 HID 设备管理器
-     */
     fun initializeHid(callback: HidDeviceManager.HidDeviceCallback) {
         serviceCallback = callback
         hidDeviceManager?.initialize(this, callback)
     }
 
-    /**
-     * 释放 HID 设备管理器
-     */
     fun releaseHid() {
         serviceCallback?.let {
             hidDeviceManager?.release(this, it)
         }
     }
 
-    /**
-     * 连接到设备
-     */
     fun connectDevice(device: BluetoothDevice): Boolean {
         return hidDeviceManager?.connect(device) ?: false
     }
 
-    /**
-     * 断开设备连接
-     */
     fun disconnectDevice(device: BluetoothDevice) {
         hidDeviceManager?.disconnect(device)
     }
 
-    /**
-     * 检查是否已连接
-     */
     fun isConnected(): Boolean {
         return hidDeviceManager?.isConnected() ?: false
     }
 
-    /**
-     * 获取当前连接的设备
-     */
     fun getCurrentDevice(): BluetoothDevice? {
         return hidDeviceManager?.getCurrentDevice()
     }
 
-    /**
-     * 创建通知渠道
-     */
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
@@ -180,9 +121,6 @@ class BluetoothHidService : Service() {
         }
     }
 
-    /**
-     * 创建通知
-     */
     private fun createNotification(title: String, content: String): Notification {
         val intent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
@@ -208,7 +146,6 @@ class BluetoothHidService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         releaseHid()
-        releaseWakeLock()
         Log.d(TAG, "Service destroyed")
     }
 }

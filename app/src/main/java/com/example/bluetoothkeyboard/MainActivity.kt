@@ -42,6 +42,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
 /**
  * 主界面 Activity
@@ -252,19 +253,36 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        // 发送所有文字
-        sendText(text)
-        
-        // 发送回车键（模拟发送按钮）
-        lifecycleScope.launch(Dispatchers.IO) {
-            delay(100) // 等待文字发送完成
-            keyboardHelper?.sendEnter()
+        // 禁用发送按钮，防止重复点击
+        sendButton.isEnabled = false
+        sendButton.text = "发送中..."
+
+        // 在协程中发送文字
+        lifecycleScope.launch {
+            try {
+                // 发送所有文字（带延迟）
+                keyboardHelper?.sendString(text)
+                
+                // 发送回车键
+                keyboardHelper?.sendEnter()
+                
+                // 在主线程中清空输入框
+                withContext(Dispatchers.Main) {
+                    inputEditText.text?.clear()
+                    Toast.makeText(this@MainActivity, "已发送", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Send failed", e)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@MainActivity, "发送失败: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            } finally {
+                withContext(Dispatchers.Main) {
+                    sendButton.isEnabled = true
+                    sendButton.text = "发送"
+                }
+            }
         }
-        
-        // 清空输入框
-        inputEditText.text?.clear()
-        
-        Toast.makeText(this, "已发送", Toast.LENGTH_SHORT).show()
     }
 
     /**

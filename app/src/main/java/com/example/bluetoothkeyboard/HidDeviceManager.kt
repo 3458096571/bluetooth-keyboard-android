@@ -2,19 +2,17 @@ package com.example.bluetoothkeyboard
 
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothHidDevice
-import android.bluetooth.BluetoothHidDeviceAppQosSettings
-import android.bluetooth.BluetoothHidDeviceAppSdpSettings
 import android.bluetooth.BluetoothProfile
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
-import java.util.concurrent.Executor
 import com.example.bluetoothkeyboard.KeyboardReport.KeyboardDataSender
 
 /**
  * HID 设备管理器
  * 负责注册 HID 服务、管理连接状态和发送数据
+ * 使用与原始项目完全一致的 API 调用方式
  */
 class HidDeviceManager private constructor() : KeyboardDataSender {
 
@@ -36,33 +34,14 @@ class HidDeviceManager private constructor() : KeyboardDataSender {
         fun onAppRegistered(success: Boolean)
     }
 
-    private var hidDevice: BluetoothHidDevice? = null
-    private var currentDevice: BluetoothDevice? = null
+    private var inputHost: BluetoothHidDevice? = null
+    private var device: BluetoothDevice? = null
     private var isRegistered = false
     private val mainHandler = Handler(Looper.getMainLooper())
     private val callbacks = mutableListOf<HidDeviceCallback>()
     private val keyboardReport = KeyboardReport()
 
-    // SDP 设置
-    private val sdpSettings = BluetoothHidDeviceAppSdpSettings(
-        "Bluetooth Keyboard",
-        "Android HID Keyboard",
-        "Android",
-        BluetoothHidDevice.SUBCLASS1_KEYBOARD,
-        Constants.SDP_RECORD
-    )
-
-    // QoS 设置
-    private val qosSettings = BluetoothHidDeviceAppQosSettings(
-        0,  // serviceType
-        0,  // tokenRate
-        0,  // tokenBucketSize
-        0,  // peakBandwidth
-        0,  // latency
-        0   // delayVariation
-    )
-
-    private val hidCallback = object : BluetoothHidDevice.Callback() {
+    private val callback = object : BluetoothHidDevice.Callback() {
         override fun onAppStatusChanged(pluggedDevice: BluetoothDevice?, registered: Boolean) {
             Log.d(TAG, "App status changed: registered=$registered")
             isRegistered = registered
@@ -76,11 +55,11 @@ class HidDeviceManager private constructor() : KeyboardDataSender {
             mainHandler.post {
                 when (state) {
                     BluetoothProfile.STATE_CONNECTED -> {
-                        currentDevice = device
+                        this@HidDeviceManager.device = device
                     }
                     BluetoothProfile.STATE_DISCONNECTED -> {
-                        if (currentDevice?.address == device.address) {
-                            currentDevice = null
+                        if (this@HidDeviceManager.device?.address == device.address) {
+                            this@HidDeviceManager.device = null
                         }
                     }
                 }
@@ -91,22 +70,28 @@ class HidDeviceManager private constructor() : KeyboardDataSender {
         override fun onGetReport(device: BluetoothDevice, type: Byte, id: Byte, bufferSize: Int) {
             Log.d(TAG, "Get report: type=$type, id=$id")
             if (type == BluetoothHidDevice.REPORT_TYPE_INPUT) {
-                val report = keyboardReport.getReport()
-                hidDevice?.replyReport(device, type, id, report)
+                if (id == Constants.ID_KEYBOARD) {
+                    val report = keyboardReport.getReport()
+                    inputHost?.replyReport(device, type, id, report)
+                } else {
+                    inputHost?.reportError(device, BluetoothHidDevice.ERROR_RSP_INVALID_RPT_ID)
+                }
+            } else {
+                inputHost?.reportError(device, BluetoothHidDevice.ERROR_RSP_UNSUPPORTED_REQ)
             }
         }
 
         override fun onSetReport(device: BluetoothDevice, type: Byte, id: Byte, data: ByteArray) {
             Log.d(TAG, "Set report: type=$type, id=$id")
-            hidDevice?.reportError(device, BluetoothHidDevice.ERROR_RSP_SUCCESS)
+            inputHost?.reportError(device, BluetoothHidDevice.ERROR_RSP_SUCCESS)
         }
     }
 
     private val serviceListener = object : BluetoothProfile.ServiceListener {
         override fun onServiceConnected(profile: Int, proxy: BluetoothProfile) {
-            Log.d(TAG, "HID service connected")
+            Log.d(TAG, "HID service connected, profile=$profile")
             if (profile == BluetoothProfile.HID_DEVICE) {
-                hidDevice = proxy as BluetoothHidDevice
+                inputHost = proxy as BluetoothHidDevice
                 registerApp()
             }
         }
@@ -115,7 +100,8 @@ class HidDeviceManager private constructor() : KeyboardDataSender {
             Log.d(TAG, "HID service disconnected")
             if (profile == BluetoothProfile.HID_DEVICE) {
                 isRegistered = false
-                hidDevice = null
+                inputHost = null
+                device = null
             }
         }
     }
@@ -135,42 +121,54 @@ class HidDeviceManager private constructor() : KeyboardDataSender {
             val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE)
                 as android.bluetooth.BluetoothManager
             val adapter = bluetoothManager.adapter
-            adapter.closeProfileProxy(BluetoothProfile.HID_DEVICE, hidDevice)
+            inputHost?.let { adapter.closeProfileProxy(BluetoothProfile.HID_DEVICE, it) }
+            inputHost = null
+            device = null
         }
     }
 
+    /**
+     * 注册 HID 应用
+     * 使用与原始项目完全一致的 5 参数 API
+     */
     private fun registerApp() {
-        hidDevice?.registerApp(
-            sdpSettings,
-            qosSettings,   // 入站 QoS
-            qosSettings,   // 出站 QoS
-            Executor { it.run() },
-            hidCallback
+        inputHost?.registerApp(
+            Constants.SDP_RECORD,  // HID 描述符
+            null,                  // 不使用 SdpSettings 对象
+            Constants.QOS_OUT,     // QoS 参数
+            Runnable::run,         // Executor
+            callback               // 回调
         )
+        Log.d(TAG, "registerApp called with 5-arg API")
     }
 
     private fun unregisterApp() {
-        if (isRegistered) {
-            hidDevice?.unregisterApp()
+        if (isRegistered && inputHost != null) {
+            inputHost?.unregisterApp()
         }
     }
 
     fun connect(device: BluetoothDevice): Boolean {
-        return hidDevice?.connect(device) ?: false
+        Log.d(TAG, "Connecting to device: ${device.name}")
+        return inputHost?.connect(device) ?: false
     }
 
     fun disconnect(device: BluetoothDevice) {
-        hidDevice?.disconnect(device)
+        inputHost?.disconnect(device)
     }
 
     fun getConnectedDevices(): List<BluetoothDevice> {
-        return hidDevice?.connectedDevices ?: emptyList()
+        return inputHost?.connectedDevices ?: emptyList()
     }
 
-    fun isConnected(): Boolean = currentDevice != null
+    fun isConnected(): Boolean = device != null
 
-    fun getCurrentDevice(): BluetoothDevice? = currentDevice
+    fun getCurrentDevice(): BluetoothDevice? = device
 
+    /**
+     * 发送键盘报告
+     * 使用与原始项目完全一致的方式
+     */
     override fun sendKeyboard(
         modifier: Int,
         key1: Int,
@@ -180,15 +178,20 @@ class HidDeviceManager private constructor() : KeyboardDataSender {
         key5: Int,
         key6: Int
     ) {
-        val device = currentDevice
-        val hid = hidDevice
-        if (device != null && hid != null) {
+        val hid = inputHost
+        val dev = device
+        
+        if (hid != null && dev != null) {
             val report = keyboardReport.setValue(modifier, key1, key2, key3, key4, key5, key6)
             try {
-                hid.sendReport(device, Constants.ID_KEYBOARD.toInt(), report)
+                // 使用与原始项目完全一致的方式：reportId 是 byte 类型
+                hid.sendReport(dev, Constants.ID_KEYBOARD, report)
+                Log.d(TAG, "sendReport: modifier=$modifier, key1=$key1")
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to send report", e)
             }
+        } else {
+            Log.w(TAG, "sendKeyboard: not connected (hid=$hid, device=$dev)")
         }
     }
 }
