@@ -41,6 +41,7 @@ import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 
 /**
  * 主界面 Activity
@@ -62,6 +63,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var deviceNameText: TextView
     private lateinit var inputContainer: LinearLayout
     private lateinit var inputEditText: EditText
+    private lateinit var sendButton: Button
     private lateinit var settingsButton: ImageButton
     private lateinit var backgroundImage: ImageView
 
@@ -163,19 +165,18 @@ class MainActivity : AppCompatActivity() {
         deviceNameText = findViewById(R.id.device_name)
         inputContainer = findViewById(R.id.input_container)
         inputEditText = findViewById(R.id.input_edit_text)
+        sendButton = findViewById(R.id.send_button)
         settingsButton = findViewById(R.id.settings_button)
         backgroundImage = findViewById(R.id.background_image)
-
-        // 设置毛玻璃效果 (Android 12+)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            inputContainer.setRenderEffect(
-                RenderEffect.createBlurEffect(20f, 20f, Shader.TileMode.CLAMP)
-            )
-        }
 
         // 配对按钮点击
         pairButton.setOnClickListener {
             showPairedDevicesDialog()
+        }
+
+        // 发送按钮点击
+        sendButton.setOnClickListener {
+            onSendButtonClicked()
         }
 
         // 设置按钮点击
@@ -222,47 +223,48 @@ class MainActivity : AppCompatActivity() {
      * 监听文本变化并发送到已连接设备
      */
     private fun setupInputListener() {
-        // 文本变化监听 - 实时发送
-        inputEditText.addTextChangedListener(object : TextWatcher {
-            private var beforeText: String = ""
-
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {
-                beforeText = s?.toString() ?: ""
-            }
-
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                // 不在这里处理，避免频繁发送
-            }
-
-            override fun afterTextChanged(s: Editable?) {
-                val currentText = s?.toString() ?: ""
-
-                // 检测新增的文字
-                if (currentText.length > beforeText.length) {
-                    val addedText = currentText.substring(beforeText.length)
-                    sendText(addedText)
-                } else if (currentText.length < beforeText.length) {
-                    // 删除了文字，发送退格键
-                    val deleteCount = beforeText.length - currentText.length
-                    repeat(deleteCount) {
-                        sendBackspace()
-                    }
-                }
-            }
-        })
-
         // 键盘按键监听（用于处理回车键）
         inputEditText.setOnEditorActionListener { _, actionId, event ->
             if (enterToSend && (actionId == EditorInfo.IME_ACTION_SEND ||
                 actionId == EditorInfo.IME_ACTION_DONE ||
-                (event?.keyCode == android.view.KeyEvent.KEYCODE_ENTER && event.action == android.view.KeyEvent.ACTION_DOWN))) {
-                sendEnter()
-                // 清空输入框
-                inputEditText.text?.clear()
+                (event?.keyCode == android.view.KeyEvent.KEYCODE_ENTER && 
+                 event.action == android.view.KeyEvent.ACTION_DOWN))) {
+                onSendButtonClicked()
                 return@setOnEditorActionListener true
             }
             false
         }
+    }
+
+    /**
+     * 发送按钮点击处理
+     */
+    private fun onSendButtonClicked() {
+        val text = inputEditText.text?.toString() ?: ""
+        
+        if (text.isEmpty()) {
+            Toast.makeText(this, "请输入文字", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        if (!isServiceBound || bluetoothHidService?.isConnected() != true) {
+            Toast.makeText(this, "请先连接蓝牙设备", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // 发送所有文字
+        sendText(text)
+        
+        // 发送回车键（模拟发送按钮）
+        lifecycleScope.launch(Dispatchers.IO) {
+            delay(100) // 等待文字发送完成
+            keyboardHelper?.sendEnter()
+        }
+        
+        // 清空输入框
+        inputEditText.text?.clear()
+        
+        Toast.makeText(this, "已发送", Toast.LENGTH_SHORT).show()
     }
 
     /**
@@ -286,7 +288,6 @@ class MainActivity : AppCompatActivity() {
      */
     private fun sendEnter() {
         if (!isServiceBound || bluetoothHidService?.isConnected() != true) {
-            Toast.makeText(this, "请先连接设备", Toast.LENGTH_SHORT).show()
             return
         }
 
@@ -463,6 +464,10 @@ class MainActivity : AppCompatActivity() {
             val hidManager = HidDeviceManager.getInstance()
             keyboardHelper = KeyboardHelper(hidManager)
         }
+        
+        // 更新发送按钮状态
+        sendButton.isEnabled = true
+        sendButton.alpha = 1.0f
     }
 
     /**
@@ -472,6 +477,10 @@ class MainActivity : AppCompatActivity() {
         pairButton.visibility = View.VISIBLE
         deviceNameText.visibility = View.GONE
         keyboardHelper = null
+        
+        // 更新发送按钮状态
+        sendButton.isEnabled = false
+        sendButton.alpha = 0.5f
     }
 
     /**

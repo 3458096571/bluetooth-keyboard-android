@@ -12,6 +12,7 @@ import android.content.pm.ServiceInfo
 import android.os.Binder
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
 
@@ -27,11 +28,13 @@ class BluetoothHidService : Service() {
         private const val NOTIFICATION_ID = 1
         const val ACTION_START = "action_start"
         const val ACTION_STOP = "action_stop"
+        private const val WAKE_LOCK_TAG = "BluetoothKeyboard::WakeLock"
     }
 
     private val binder = LocalBinder()
     private var hidDeviceManager: HidDeviceManager? = null
     private var serviceCallback: HidDeviceManager.HidDeviceCallback? = null
+    private var wakeLock: PowerManager.WakeLock? = null
 
     inner class LocalBinder : Binder() {
         fun getService(): BluetoothHidService = this@BluetoothHidService
@@ -42,6 +45,7 @@ class BluetoothHidService : Service() {
         Log.d(TAG, "Service created")
         createNotificationChannel()
         hidDeviceManager = HidDeviceManager.getInstance()
+        acquireWakeLock()
     }
 
     override fun onBind(intent: Intent): IBinder {
@@ -54,6 +58,34 @@ class BluetoothHidService : Service() {
             ACTION_STOP -> stopForegroundService()
         }
         return START_STICKY
+    }
+
+    /**
+     * 获取 WakeLock 保持 CPU 运行
+     */
+    private fun acquireWakeLock() {
+        val powerManager = getSystemService(POWER_SERVICE) as PowerManager
+        wakeLock = powerManager.newWakeLock(
+            PowerManager.PARTIAL_WAKE_LOCK,
+            WAKE_LOCK_TAG
+        ).apply {
+            setReferenceCounted(false)
+            acquire(10 * 60 * 1000L) // 10分钟，会自动续期
+        }
+        Log.d(TAG, "WakeLock acquired")
+    }
+
+    /**
+     * 释放 WakeLock
+     */
+    private fun releaseWakeLock() {
+        wakeLock?.let {
+            if (it.isHeld) {
+                it.release()
+                Log.d(TAG, "WakeLock released")
+            }
+        }
+        wakeLock = null
     }
 
     /**
@@ -176,6 +208,7 @@ class BluetoothHidService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         releaseHid()
+        releaseWakeLock()
         Log.d(TAG, "Service destroyed")
     }
 }

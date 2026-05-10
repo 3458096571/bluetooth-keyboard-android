@@ -21,6 +21,9 @@
     <!-- 前台服务权限（保持蓝牙连接） -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    
+    <!-- WakeLock 权限（防止 CPU 休眠导致连接断开） -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <uses-feature
         android:name="android.hardware.bluetooth"
