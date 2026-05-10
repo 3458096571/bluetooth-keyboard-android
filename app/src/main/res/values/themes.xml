@@ -1,0 +1,25 @@
+<resources>
+    <!-- 应用主题 -->
+    <style name="Theme.BluetoothKeyboard" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <!-- 主色 -->
+        <item name="colorPrimary">@color/primary</item>
+        <item name="colorPrimaryVariant">@color/primary_dark</item>
+        <item name="colorOnPrimary">@color/white</item>
+        
+        <!-- 强调色 -->
+        <item name="colorSecondary">@color/accent</item>
+        <item name="colorSecondaryVariant">@color/accent</item>
+        <item name="colorOnSecondary">@color/white</item>
+        
+        <!-- 状态栏 -->
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        
+        <!-- 窗口背景 -->
+        <item name="android:windowBackground">@drawable/default_gradient</item>
+        
+        <!-- 无ActionBar -->
+        <item name="windowActionBar">false</item>
+        <item name="windowNoTitle">true</item>
+    </style>
+</resources>
