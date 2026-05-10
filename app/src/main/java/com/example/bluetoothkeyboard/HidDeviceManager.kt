@@ -9,6 +9,7 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import java.util.concurrent.Executor
 import com.example.bluetoothkeyboard.KeyboardReport.KeyboardDataSender
 
 /**
@@ -142,7 +143,7 @@ class HidDeviceManager private constructor() : KeyboardDataSender {
         hidDevice?.registerApp(
             sdpSettings,
             qosSettings,
-            Runnable::run,
+            Executor { it.run() },
             hidCallback
         )
     }
