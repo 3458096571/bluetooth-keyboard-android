@@ -1,7 +1,6 @@
 package com.example.bluetoothkeyboard
 
 import android.util.Log
-import com.example.bluetoothkeyboard.KeyboardReport.KeyboardDataSender
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext

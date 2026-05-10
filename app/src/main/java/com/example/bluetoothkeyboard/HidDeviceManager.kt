@@ -8,7 +8,6 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
-import com.example.bluetoothkeyboard.KeyboardReport.KeyboardDataSender
 import java.util.concurrent.Executors
 
 /**
