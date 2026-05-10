@@ -145,7 +145,7 @@ class HidDeviceManager private constructor() : KeyboardDataSender {
 
         // 创建 QoS 设置
         val qosSettings = BluetoothHidDeviceAppQosSettings(
-            BluetoothHidDeviceAppQosSettings.SERVICE_TYPE_BEST_EFFORT,
+            0,  // serviceType: 0 = BEST_EFFORT
             0, 0, 0, 0, 0
         )
 
