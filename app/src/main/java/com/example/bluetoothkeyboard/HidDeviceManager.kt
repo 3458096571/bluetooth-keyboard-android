@@ -2,17 +2,19 @@ package com.example.bluetoothkeyboard
 
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothHidDevice
+import android.bluetooth.BluetoothHidDeviceAppQosSettings
+import android.bluetooth.BluetoothHidDeviceAppSdpSettings
 import android.bluetooth.BluetoothProfile
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import com.example.bluetoothkeyboard.KeyboardReport.KeyboardDataSender
+import java.util.concurrent.Executor
 
 /**
  * HID 设备管理器
  * 负责注册 HID 服务、管理连接状态和发送数据
- * 使用与原始项目完全一致的 API 调用方式
  */
 class HidDeviceManager private constructor() : KeyboardDataSender {
 
@@ -129,17 +131,32 @@ class HidDeviceManager private constructor() : KeyboardDataSender {
 
     /**
      * 注册 HID 应用
-     * 使用与原始项目完全一致的 5 参数 API
+     * 使用 API 34 的正确签名
      */
     private fun registerApp() {
-        inputHost?.registerApp(
-            Constants.SDP_RECORD,  // HID 描述符
-            null,                  // 不使用 SdpSettings 对象
-            Constants.QOS_OUT,     // QoS 参数
-            Runnable::run,         // Executor
-            callback               // 回调
+        // 创建 SDP 设置
+        val sdpSettings = BluetoothHidDeviceAppSdpSettings(
+            "Bluetooth Keyboard",           // 名称
+            "Android HID Keyboard",         // 描述
+            "Android",                       // 提供商
+            BluetoothHidDevice.SUBCLASS1_KEYBOARD, // 子类
+            Constants.SDP_RECORD             // HID 描述符
         )
-        Log.d(TAG, "registerApp called with 5-arg API")
+
+        // 创建 QoS 设置
+        val qosSettings = BluetoothHidDeviceAppQosSettings(
+            BluetoothHidDeviceAppQosSettings.SERVICE_TYPE_BEST_EFFORT,
+            0, 0, 0, 0, 0
+        )
+
+        inputHost?.registerApp(
+            sdpSettings,
+            qosSettings,
+            qosSettings,
+            Executor { it.run() },
+            callback
+        )
+        Log.d(TAG, "registerApp called")
     }
 
     private fun unregisterApp() {
@@ -167,7 +184,6 @@ class HidDeviceManager private constructor() : KeyboardDataSender {
 
     /**
      * 发送键盘报告
-     * 使用与原始项目完全一致的方式
      */
     override fun sendKeyboard(
         modifier: Int,
@@ -180,12 +196,11 @@ class HidDeviceManager private constructor() : KeyboardDataSender {
     ) {
         val hid = inputHost
         val dev = device
-        
+
         if (hid != null && dev != null) {
             val report = keyboardReport.setValue(modifier, key1, key2, key3, key4, key5, key6)
             try {
-                // 使用与原始项目完全一致的方式：reportId 是 byte 类型
-                hid.sendReport(dev, Constants.ID_KEYBOARD, report)
+                hid.sendReport(dev, Constants.ID_KEYBOARD.toInt(), report)
                 Log.d(TAG, "sendReport: modifier=$modifier, key1=$key1")
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to send report", e)
