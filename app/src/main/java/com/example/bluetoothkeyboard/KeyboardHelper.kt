@@ -28,7 +28,7 @@ class KeyboardHelper(private val hidManager: HidDeviceManager) {
         const val RIGHT_CTRL: Byte = 0x10
         const val RIGHT_SHIFT: Byte = 0x20
         const val RIGHT_ALT: Byte = 0x40
-        const val RIGHT_GUI: Byte = 0x80
+        const val RIGHT_GUI: Byte = (-128).toByte()
     }
 
     object Key {

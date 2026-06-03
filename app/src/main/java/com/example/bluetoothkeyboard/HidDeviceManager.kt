@@ -188,20 +188,8 @@ class HidDeviceManager private constructor() {
             )
             Log.d(TAG, "registerApp 已调用: SUBCLASS1_COMBO, QoS=null, name=\"${Constants.HID_DEVICE_NAME}\"")
         } catch (e: Exception) {
-            Log.e(TAG, "registerApp 失败", e)
-            // 如果5参数版本失败，尝试4参数版本（旧API）
-            try {
-                @Suppress("DEPRECATION")
-                mHidDevice?.registerApp(
-                    sdpSettings,
-                    null,
-                    Executors.newCachedThreadPool(),
-                    mCallback
-                )
-                Log.d(TAG, "registerApp 已调用（4参数旧API版本）")
-            } catch (e2: Exception) {
-                Log.e(TAG, "registerApp 4参数版本也失败", e2)
-            }
+            Log.e(TAG, "registerApp 失败: ${e.message}", e)
+            Log.e(TAG, "registerApp 5参数版本失败，无法继续")
         }
     }
 
