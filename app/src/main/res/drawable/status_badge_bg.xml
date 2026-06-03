@@ -4,5 +4,4 @@
     <!-- 状态标签背景 -->
     <solid android:color="#20FFFFFF" />
     <corners android:radius="10dp" />
-    <padding android:horizontal="8dp" android:vertical="2dp"/>
 </shape>
