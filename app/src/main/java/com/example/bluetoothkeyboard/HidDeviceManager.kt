@@ -174,7 +174,7 @@ class HidDeviceManager private constructor() {
             Constants.HID_DEVICE_NAME,
             Constants.DESCRIPTION,
             Constants.PROVIDER,
-            BluetoothHidDevice.SUBCLASS1_COMBO,  // ★ 关键：使用 COMBO 而非 KEYBOARD ★
+            BluetoothHidDevice.SUBCLASS1_KEYBOARD,  // ★ 纯键盘设备 ★
             Constants.HID_DESCRIPTOR
         )
 

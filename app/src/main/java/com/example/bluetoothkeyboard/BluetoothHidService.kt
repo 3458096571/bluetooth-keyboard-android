@@ -6,18 +6,25 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.bluetooth.BluetoothDevice
-import android.bluetooth.BluetoothProfile
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Binder
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
+import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
 
 /**
  * 蓝牙 HID 前台服务
  * 保持应用在后台时蓝牙连接不中断
+ * 
+ * 增强功能：
+ * 1. 前台服务 + 通知保持存活
+ * 2. WakeLock 防止 CPU 休眠导致连接断开
+ * 3. 连接状态心跳检测
  */
 class BluetoothHidService : Service() {
 
@@ -32,6 +39,18 @@ class BluetoothHidService : Service() {
     private val binder = LocalBinder()
     private var hidDeviceManager: HidDeviceManager? = null
     private var serviceCallback: HidDeviceManager.HidDeviceCallback? = null
+    
+    // WakeLock 防止连接因 CPU 休眠而断开
+    private var wakeLock: PowerManager.WakeLock? = null
+    
+    // 心跳检测 Handler
+    private val heartbeatHandler = Handler(Looper.getMainLooper())
+    private val heartbeatRunnable = object : Runnable {
+        override fun run() {
+            updateNotification()
+            heartbeatHandler.postDelayed(this, 5000) // 每5秒更新一次通知
+        }
+    }
 
     inner class LocalBinder : Binder() {
         fun getService(): BluetoothHidService = this@BluetoothHidService
@@ -42,6 +61,13 @@ class BluetoothHidService : Service() {
         Log.d(TAG, "Service created")
         createNotificationChannel()
         hidDeviceManager = HidDeviceManager.getInstance()
+        
+        // 获取 WakeLock
+        val powerManager = getSystemService(POWER_SERVICE) as PowerManager
+        wakeLock = powerManager.newWakeLock(
+            PowerManager.PARTIAL_WAKE_LOCK,
+            "BluetoothKeyboard::WakeLock"
+        )
     }
 
     override fun onBind(intent: Intent): IBinder {
@@ -69,10 +95,33 @@ class BluetoothHidService : Service() {
             startForeground(NOTIFICATION_ID, notification)
         }
         
+        // 获取 WakeLock 保持 CPU 运行
+        try {
+            wakeLock?.acquire(10 * 60 * 1000L) // 10分钟超时
+            Log.d(TAG, "WakeLock acquired")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to acquire WakeLock", e)
+        }
+        
+        // 启动心跳检测
+        heartbeatHandler.post(heartbeatRunnable)
+        
         Log.d(TAG, "Foreground service started")
     }
 
     private fun stopForegroundService() {
+        heartbeatHandler.removeCallbacks(heartbeatRunnable)
+        
+        // 释放 WakeLock
+        try {
+            if (wakeLock?.isHeld == true) {
+                wakeLock?.release()
+                Log.d(TAG, "WakeLock released")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to release WakeLock", e)
+        }
+        
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
         Log.d(TAG, "Foreground service stopped")
@@ -90,11 +139,16 @@ class BluetoothHidService : Service() {
     }
 
     fun connectDevice(device: BluetoothDevice): Boolean {
-        return hidDeviceManager?.connect(device) ?: false
+        val result = hidDeviceManager?.connect(device) ?: false
+        if (result) {
+            updateNotification("已连接: ${device.name ?: "未知设备"}", "蓝牙键盘正在工作")
+        }
+        return result
     }
 
     fun disconnectDevice(device: BluetoothDevice) {
         hidDeviceManager?.disconnect(device)
+        updateNotification("蓝牙键盘服务运行中", "等待连接...")
     }
 
     fun isConnected(): Boolean {
@@ -103,6 +157,11 @@ class BluetoothHidService : Service() {
 
     fun getCurrentDevice(): BluetoothDevice? {
         return hidDeviceManager?.getCurrentDevice()
+    }
+
+    private fun updateNotification(title: String = "蓝牙键盘服务", content: String = "正在保持蓝牙连接...") {
+        val notificationManager = getSystemService(NotificationManager::class.java)
+        notificationManager?.notify(NOTIFICATION_ID, createNotification(title, content))
     }
 
     private fun createNotificationChannel() {
@@ -145,6 +204,16 @@ class BluetoothHidService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        heartbeatHandler.removeCallbacks(heartbeatRunnable)
+        
+        try {
+            if (wakeLock?.isHeld == true) {
+                wakeLock?.release()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to release WakeLock on destroy", e)
+        }
+        
         releaseHid()
         Log.d(TAG, "Service destroyed")
     }
