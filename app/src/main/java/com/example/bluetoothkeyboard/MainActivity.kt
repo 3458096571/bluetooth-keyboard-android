@@ -12,14 +12,9 @@ import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.graphics.RenderEffect
-import android.graphics.Shader
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.os.IBinder
-import android.text.Editable
-import android.text.TextWatcher
 import android.util.Log
 import android.view.View
 import android.view.inputmethod.EditorInfo
@@ -46,7 +41,12 @@ import kotlinx.coroutines.withContext
 
 /**
  * 主界面 Activity
- * 实现蓝牙配对、文字输入和 HID 发送功能
+ * 
+ * 功能：
+ * 1. 蓝牙配对 - 选择已配对设备并建立 HID 连接
+ * 2. 文字输入 - 使用系统输入法输入文字
+ * 3. HID 发送 - 通过蓝牙 HID 将文字发送到已连接设备
+ * 4. 设置 - 回车发送开关、自定义背景
  */
 class MainActivity : AppCompatActivity() {
 
@@ -62,11 +62,14 @@ class MainActivity : AppCompatActivity() {
     private lateinit var rootLayout: ConstraintLayout
     private lateinit var pairButton: Button
     private lateinit var deviceNameText: TextView
+    private lateinit var connectedInfo: LinearLayout
     private lateinit var inputContainer: LinearLayout
     private lateinit var inputEditText: EditText
     private lateinit var sendButton: Button
     private lateinit var settingsButton: ImageButton
     private lateinit var backgroundImage: ImageView
+    private lateinit var statusIndicator: View
+    private lateinit var connectionStatusText: TextView
 
     // 蓝牙相关
     private lateinit var bluetoothAdapter: BluetoothAdapter
@@ -110,6 +113,7 @@ class MainActivity : AppCompatActivity() {
         override fun onServiceDisconnected(name: ComponentName?) {
             bluetoothHidService = null
             isServiceBound = false
+            runOnUiThread { showDisconnected() }
         }
     }
 
@@ -129,7 +133,14 @@ class MainActivity : AppCompatActivity() {
         }
 
         override fun onAppRegistered(success: Boolean) {
-            Log.d(TAG, "HID app registered: $success")
+            Log.d(TAG, "HID 应用注册: $success")
+            runOnUiThread {
+                if (success) {
+                    Toast.makeText(this@MainActivity, "HID 设备就绪，请选择要连接的设备", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(this@MainActivity, "HID 注册失败，请检查蓝牙", Toast.LENGTH_SHORT).show()
+                }
+            }
         }
     }
 
@@ -164,11 +175,14 @@ class MainActivity : AppCompatActivity() {
         rootLayout = findViewById(R.id.root_layout)
         pairButton = findViewById(R.id.pair_button)
         deviceNameText = findViewById(R.id.device_name)
+        connectedInfo = findViewById(R.id.connected_info)
         inputContainer = findViewById(R.id.input_container)
         inputEditText = findViewById(R.id.input_edit_text)
         sendButton = findViewById(R.id.send_button)
         settingsButton = findViewById(R.id.settings_button)
         backgroundImage = findViewById(R.id.background_image)
+        statusIndicator = findViewById(R.id.status_indicator)
+        connectionStatusText = findViewById(R.id.connection_status_text)
 
         // 配对按钮点击
         pairButton.setOnClickListener {
@@ -187,6 +201,10 @@ class MainActivity : AppCompatActivity() {
 
         // 设置输入监听
         setupInputListener()
+
+        // 初始状态：发送按钮禁用
+        sendButton.isEnabled = false
+        sendButton.alpha = 0.5f
     }
 
     /**
@@ -221,7 +239,6 @@ class MainActivity : AppCompatActivity() {
 
     /**
      * 设置输入监听器
-     * 监听文本变化并发送到已连接设备
      */
     private fun setupInputListener() {
         // 键盘按键监听（用于处理回车键）
@@ -256,6 +273,7 @@ class MainActivity : AppCompatActivity() {
         // 禁用发送按钮，防止重复点击
         sendButton.isEnabled = false
         sendButton.text = "发送中..."
+        sendButton.alpha = 0.7f
 
         // 在协程中发送文字
         lifecycleScope.launch {
@@ -269,10 +287,10 @@ class MainActivity : AppCompatActivity() {
                 // 在主线程中清空输入框
                 withContext(Dispatchers.Main) {
                     inputEditText.text?.clear()
-                    Toast.makeText(this@MainActivity, "已发送", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@MainActivity, "已发送 ✓", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Send failed", e)
+                Log.e(TAG, "发送失败", e)
                 withContext(Dispatchers.Main) {
                     Toast.makeText(this@MainActivity, "发送失败: ${e.message}", Toast.LENGTH_SHORT).show()
                 }
@@ -280,50 +298,9 @@ class MainActivity : AppCompatActivity() {
                 withContext(Dispatchers.Main) {
                     sendButton.isEnabled = true
                     sendButton.text = "发送"
+                    sendButton.alpha = 1.0f
                 }
             }
-        }
-    }
-
-    /**
-     * 发送文本到已连接设备
-     */
-    private fun sendText(text: String) {
-        if (!isServiceBound || bluetoothHidService?.isConnected() != true) {
-            return
-        }
-
-        // 取消之前的发送任务
-        sendJob?.cancel()
-
-        sendJob = lifecycleScope.launch(Dispatchers.IO) {
-            keyboardHelper?.sendString(text)
-        }
-    }
-
-    /**
-     * 发送回车键
-     */
-    private fun sendEnter() {
-        if (!isServiceBound || bluetoothHidService?.isConnected() != true) {
-            return
-        }
-
-        lifecycleScope.launch(Dispatchers.IO) {
-            keyboardHelper?.sendEnter()
-        }
-    }
-
-    /**
-     * 发送退格键
-     */
-    private fun sendBackspace() {
-        if (!isServiceBound || bluetoothHidService?.isConnected() != true) {
-            return
-        }
-
-        lifecycleScope.launch(Dispatchers.IO) {
-            keyboardHelper?.sendBackspace()
         }
     }
 
@@ -344,7 +321,9 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        val deviceNames = pairedDevices.map { it.name ?: "未知设备" }.toTypedArray()
+        val deviceNames = pairedDevices.map { 
+            "${it.name ?: "未知设备"} (${it.address})"
+        }.toTypedArray()
 
         AlertDialog.Builder(this)
             .setTitle("选择要连接的设备")
@@ -365,11 +344,17 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        val success = bluetoothHidService?.connectDevice(device) ?: false
-        if (success) {
-            Toast.makeText(this, "正在连接 ${device.name}...", Toast.LENGTH_SHORT).show()
-        } else {
-            Toast.makeText(this, "连接失败", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "正在连接 ${device.name}...", Toast.LENGTH_SHORT).show()
+        
+        // 延迟连接，让 Toast 先显示
+        lifecycleScope.launch(Dispatchers.IO) {
+            delay(300)
+            val success = bluetoothHidService?.connectDevice(device) ?: false
+            withContext(Dispatchers.Main) {
+                if (!success) {
+                    Toast.makeText(this@MainActivity, "连接失败，请重试", Toast.LENGTH_SHORT).show()
+                }
+            }
         }
     }
 
@@ -385,7 +370,7 @@ class MainActivity : AppCompatActivity() {
         enterSwitch.isChecked = enterToSend
 
         val dialog = AlertDialog.Builder(this)
-            .setTitle("设置")
+            .setTitle("⚙️ 设置")
             .setView(dialogView)
             .setPositiveButton("保存") { _, _ ->
                 enterToSend = enterSwitch.isChecked
@@ -444,7 +429,7 @@ class MainActivity : AppCompatActivity() {
             loadCustomBackground()
             Toast.makeText(this, "背景已更新", Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to set background", e)
+            Log.e(TAG, "设置背景失败", e)
             Toast.makeText(this, "设置背景失败", Toast.LENGTH_SHORT).show()
         }
     }
@@ -461,7 +446,7 @@ class MainActivity : AppCompatActivity() {
                 backgroundImage.setImageBitmap(bitmap)
                 backgroundImage.visibility = View.VISIBLE
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to load background", e)
+                Log.e(TAG, "加载背景失败", e)
                 backgroundImage.visibility = View.GONE
             }
         } else {
@@ -474,18 +459,23 @@ class MainActivity : AppCompatActivity() {
      */
     private fun showConnected(device: BluetoothDevice?) {
         pairButton.visibility = View.GONE
-        deviceNameText.visibility = View.VISIBLE
-        deviceNameText.text = "已连接: ${device?.name ?: "未知设备"}"
+        connectedInfo.visibility = View.VISIBLE
+        deviceNameText.text = "⌨️ ${device?.name ?: "未知设备"}"
+
+        // 状态指示器变绿
+        statusIndicator.setBackgroundResource(R.drawable.status_connected)
+        connectionStatusText.text = "已连接"
+        connectionStatusText.setTextColor(getColor(android.R.color.holo_green_light))
 
         // 初始化 keyboardHelper
-        bluetoothHidService?.let {
-            val hidManager = HidDeviceManager.getInstance()
-            keyboardHelper = KeyboardHelper(hidManager)
-        }
+        val hidManager = HidDeviceManager.getInstance()
+        keyboardHelper = KeyboardHelper(hidManager)
         
         // 更新发送按钮状态
         sendButton.isEnabled = true
         sendButton.alpha = 1.0f
+
+        Log.d(TAG, "UI: 已连接到 ${device?.name}")
     }
 
     /**
@@ -493,12 +483,19 @@ class MainActivity : AppCompatActivity() {
      */
     private fun showDisconnected() {
         pairButton.visibility = View.VISIBLE
-        deviceNameText.visibility = View.GONE
+        connectedInfo.visibility = View.GONE
         keyboardHelper = null
+
+        // 状态指示器变灰
+        statusIndicator.setBackgroundResource(R.drawable.status_disconnected)
+        connectionStatusText.text = "未连接"
+        connectionStatusText.setTextColor(getColor(android.R.color.darker_gray))
         
         // 更新发送按钮状态
         sendButton.isEnabled = false
         sendButton.alpha = 0.5f
+
+        Log.d(TAG, "UI: 已断开连接")
     }
 
     /**

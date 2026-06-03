@@ -7,38 +7,41 @@ import kotlinx.coroutines.withContext
 
 /**
  * 键盘辅助类
- * 负责字符到扫描码的转换和按键发送
+ * 负责字符到 HID 扫描码的转换和按键发送
+ * 
+ * 使用 HidDeviceManager 的队列发送机制
+ * 每个字符：按下报告 → 释放报告
  */
-class KeyboardHelper(private val dataSender: KeyboardDataSender) {
+class KeyboardHelper(private val hidManager: HidDeviceManager) {
 
     companion object {
         private const val TAG = "KeyboardHelper"
-        private const val KEY_DELAY_MS = 15L
+        private const val CHAR_DELAY_MS = 20L  // 每个字符之间的延迟
     }
 
     object Modifier {
-        const val NONE = 0
-        const val LEFT_CTRL = 1
-        const val LEFT_SHIFT = 2
-        const val LEFT_ALT = 4
-        const val LEFT_GUI = 8
-        const val RIGHT_CTRL = 16
-        const val RIGHT_SHIFT = 32
-        const val RIGHT_ALT = 64
-        const val RIGHT_GUI = 128
+        const val NONE: Byte = 0
+        const val LEFT_CTRL: Byte = 0x01
+        const val LEFT_SHIFT: Byte = 0x02
+        const val LEFT_ALT: Byte = 0x04
+        const val LEFT_GUI: Byte = 0x08
+        const val RIGHT_CTRL: Byte = 0x10
+        const val RIGHT_SHIFT: Byte = 0x20
+        const val RIGHT_ALT: Byte = 0x40
+        const val RIGHT_GUI: Byte = 0x80
     }
 
     object Key {
-        const val ENTER = 40
-        const val ESCAPE = 41
-        const val BACKSPACE = 42
-        const val TAB = 43
-        const val SPACE = 44
-        const val DELETE = 76
+        const val ENTER: Byte = 0x28       // HID Usage ID 40
+        const val ESCAPE: Byte = 0x29      // HID Usage ID 41
+        const val BACKSPACE: Byte = 0x2A   // HID Usage ID 42
+        const val TAB: Byte = 0x2B         // HID Usage ID 43
+        const val SPACE: Byte = 0x2C        // HID Usage ID 44
+        const val DELETE: Byte = 0x4C       // HID Usage ID 76
     }
 
-    // 字符到扫描码的映射表 (小写字母和数字)
-    private val keyMap = mapOf(
+    // 字符到 HID Usage ID 的映射表（小写字母和数字）
+    private val keyMap: Map<Char, Byte> = mapOf(
         'a' to 0x04, 'b' to 0x05, 'c' to 0x06, 'd' to 0x07,
         'e' to 0x08, 'f' to 0x09, 'g' to 0x0A, 'h' to 0x0B,
         'i' to 0x0C, 'j' to 0x0D, 'k' to 0x0E, 'l' to 0x0F,
@@ -52,11 +55,12 @@ class KeyboardHelper(private val dataSender: KeyboardDataSender) {
         ' ' to 0x2C,
         '-' to 0x2D, '=' to 0x2E, '[' to 0x2F, ']' to 0x30,
         '\\' to 0x31, ';' to 0x33, '\'' to 0x34, '`' to 0x35,
-        ',' to 0x36, '.' to 0x37, '/' to 0x38
+        ',' to 0x36, '.' to 0x37, '/' to 0x38,
+        '\n' to 0x28  // 回车
     )
 
-    // 需要Shift的字符映射
-    private val shiftKeyMap = mapOf(
+    // 需要 Shift 的字符映射
+    private val shiftKeyMap: Map<Char, Byte> = mapOf(
         'A' to 0x04, 'B' to 0x05, 'C' to 0x06, 'D' to 0x07,
         'E' to 0x08, 'F' to 0x09, 'G' to 0x0A, 'H' to 0x0B,
         'I' to 0x0C, 'J' to 0x0D, 'K' to 0x0E, 'L' to 0x0F,
@@ -74,28 +78,27 @@ class KeyboardHelper(private val dataSender: KeyboardDataSender) {
 
     /**
      * 发送单个字符
+     * 流程：按下报告（带修饰键+按键码）→ 释放报告（全零）
      */
     fun sendChar(char: Char) {
-        var shift = false
-        var code = keyMap[char]
-        
-        if (code == null) {
-            shift = true
-            code = shiftKeyMap[char]
-        }
-        
+        val isShift = keyMap[char] == null
+        val code = if (isShift) shiftKeyMap[char] else keyMap[char]
+
         if (code != null) {
-            val modifier = if (shift) Modifier.LEFT_SHIFT else Modifier.NONE
-            
+            val modifier = if (isShift) Modifier.LEFT_SHIFT else Modifier.NONE
+
             // 发送按键按下
-            dataSender.sendKeyboard(modifier, code, 0, 0, 0, 0, 0)
-            
-            // 发送按键释放 - 这很重要！
-            dataSender.sendKeyboard(Modifier.NONE, 0, 0, 0, 0, 0, 0)
-            
-            Log.d(TAG, "sendChar: '$char' -> code=$code, shift=$shift")
+            hidManager.sendKeyboardReport(modifier, code)
+            Log.d(TAG, "sendChar 按下: '$char' -> code=0x${code.toString(16)}, modifier=0x${modifier.toString(16)}")
+
+            // 短暂延迟确保按下事件被处理
+            try { Thread.sleep(10) } catch (_: InterruptedException) {}
+
+            // 发送按键释放（全零报告）
+            hidManager.sendReleaseReport()
+            Log.d(TAG, "sendChar 释放: '$char'")
         } else {
-            Log.w(TAG, "sendChar: unknown char '$char' (code=${char.code})")
+            Log.w(TAG, "sendChar: 未知字符 '$char' (code=${char.code})")
         }
     }
 
@@ -103,12 +106,12 @@ class KeyboardHelper(private val dataSender: KeyboardDataSender) {
      * 发送字符串（挂起函数，带延迟）
      */
     suspend fun sendString(text: String) = withContext(Dispatchers.IO) {
-        Log.d(TAG, "sendString: \"$text\" (${text.length} chars)")
+        Log.d(TAG, "sendString: \"$text\" (${text.length} 字符)")
         for (char in text) {
             sendChar(char)
-            delay(KEY_DELAY_MS)
+            delay(CHAR_DELAY_MS)
         }
-        Log.d(TAG, "sendString: done")
+        Log.d(TAG, "sendString: 完成")
     }
 
     /**
@@ -116,8 +119,9 @@ class KeyboardHelper(private val dataSender: KeyboardDataSender) {
      */
     fun sendEnter() {
         Log.d(TAG, "sendEnter")
-        dataSender.sendKeyboard(Modifier.NONE, Key.ENTER, 0, 0, 0, 0, 0)
-        dataSender.sendKeyboard(Modifier.NONE, 0, 0, 0, 0, 0, 0)
+        hidManager.sendKeyboardReport(Modifier.NONE, Key.ENTER)
+        try { Thread.sleep(10) } catch (_: InterruptedException) {}
+        hidManager.sendReleaseReport()
     }
 
     /**
@@ -125,7 +129,17 @@ class KeyboardHelper(private val dataSender: KeyboardDataSender) {
      */
     fun sendBackspace() {
         Log.d(TAG, "sendBackspace")
-        dataSender.sendKeyboard(Modifier.NONE, Key.BACKSPACE, 0, 0, 0, 0, 0)
-        dataSender.sendKeyboard(Modifier.NONE, 0, 0, 0, 0, 0, 0)
+        hidManager.sendKeyboardReport(Modifier.NONE, Key.BACKSPACE)
+        try { Thread.sleep(10) } catch (_: InterruptedException) {}
+        hidManager.sendReleaseReport()
+    }
+
+    /**
+     * 发送特殊按键
+     */
+    fun sendKey(keyCode: Byte, modifier: Byte = Modifier.NONE) {
+        hidManager.sendKeyboardReport(modifier, keyCode)
+        try { Thread.sleep(10) } catch (_: InterruptedException) {}
+        hidManager.sendReleaseReport()
     }
 }
